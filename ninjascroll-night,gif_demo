@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""
+generate_placeholder.py
+
+Generate an animated GIF placeholder (pulsing rounded box + centered text).
+
+Requirements:
+Updated script — key changes so the generated GIF reliably animates in preview:
+
+keep frames in RGBA while drawing, then convert to a paletted GIF sequence just before saving (helps Pillow create a proper animated GIF).
+pass a per-frame duration list and loop=0 so viewers (including GitHub) know to animate.
+use disposal=2 (background) to avoid artifacting between frames.
+avoid converting each frame to "P" inside make_frame (do it once at save time).
+Replace your script with this version and run the same way you were:
+
+#!/usr/bin/env python3 """ generate_placeholder.py
+
+Generate an animated GIF placeholder (pulsing rounded box + centered text).
+
+Requirements: pip install Pillow
+
+Usage examples: python generate_placeholder.py --out placeholder.gif python generate_placeholder.py --width 400 --height 300 --text "Loading..." --bg "#eeeeee" --fg "#777777" --frames 20 --duration 2.0 """ import argparse import math from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+def parse_args(): p = argparse.ArgumentParser(description="Generate an animated GIF placeholder") p.add_argument("--width", type=int, default=300, help="image width in px") p.add_argument("--height", type=int, default=200, help="image height in px") p.add_argument("--bg", default="#DDDDDD", help="background color (hex or name)") p.add_argument("--box", default="#BBBBBB", help="box color") p.add_argument("--fg", default="#333333", help="text color") p.add_argument("--text", default="GIF", help="centered text") p.add_argument("--frames", type=int, default=24, help="number of frames") p.add_argument("--duration", type=float, default=2.0, help="total duration in seconds") p.add_argument("--out", default="placeholder.gif", help="output filename") p.add_argument("--font", default="", help="path to .ttf font (optional)") return p.parse_args()
+
+def centered_text_draw(draw, text, font, img_size, fill): # Pillow's textsize/getbbox can differ by version; use textbbox when available for precise centering try: bbox = draw.textbbox((0,0), text, font=font) w = bbox[2] - bbox[0] h = bbox[3] - bbox[1] except Exception: w, h = draw.textsize(text, font=font) x = (img_size[0] - w) / 2 y = (img_size[1] - h) / 2 draw.text((x, y), text, font=font, fill=fill)
+
+def make_frame(base_size, bg_color, box_color, text, text_color, font, scale): w, h = base_size # Create RGBA so we can anti-alias and produce nicer result img = Image.new("RGBA", (w, h), bg_color) draw = ImageDraw.Draw(img)
+
+Code
+# compute rounded rect size
+margin = int(min(w, h) * 0.1)
+box_w = int((w - 2 * margin) * scale)
+box_h = int((h - 2 * margin) * scale)
+box_x = (w - box_w) // 2
+box_y = (h - box_h) // 2
+radius = max(6, int(min(box_w, box_h) * 0.06))
+
+# Draw shadow
+shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+sd = ImageDraw.Draw(shadow)
+shadow_color = (0, 0, 0, 60)
+sd.rounded_rectangle((box_x+4, box_y+6, box_x+box_w+4, box_y+box_h+6), radius=radius, fill=shadow_color)
+shadow = shadow.filter(ImageFilter.GaussianBlur(6))
+img = Image.alpha_composite(img, shadow)
+draw = ImageDraw.Draw(img)
+
+# Draw rounded rect (box)
+draw.rounded_rectangle((box_x, box_y, box_x + box_w, box_y + box_h), radius=radius, fill=box_color)
+
+# Draw centered text
+# we want the font to scale with box size
+try:
+    wtext, htext = draw.textsize(text, font=font)
+    max_text_w = int(box_w * 0.8)
+    max_text_h = int(box_h * 0.6)
+    if wtext > max_text_w or htext > max_text_h:
+        scale_factor = min(max_text_w / float(wtext), max_text_h / float(htext))
+        # recalc font size if truetype
+        if hasattr(font, "path") or hasattr(font, "font"):
+            try:
+                fontsize = max(10, int(font.size * scale_factor))
+                font = ImageFont.truetype(font.path, fontsize)
+            except Exception:
+                pass
+except Exception:
+    pass
+
+centered_text_draw(draw, text, font, (w, h), text_color)
+
+# Return RGBA frame — defer palette conversion until saving
+return img
+def main(): args = parse_args() w, h = args.width, args.height
+
+Code
+# Load font
+if args.font:
+    try:
+        font = ImageFont.truetype(args.font, size=int(min(w, h) * 0.18))
+        font.path = args.font
+        font.size = int(min(w, h) * 0.18)
+    except Exception as e:
+        print("Could not load font, falling back to default:", e)
+        font = ImageFont.load_default()
+else:
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", size=int(min(w, h) * 0.18))
+        font.path = "DejaVuSans.ttf"
+        font.size = int(min(w, h) * 0.18)
+    except Exception:
+        font = ImageFont.load_default()
+
+frames = []
+for i in range(args.frames):
+    t = i / args.frames  # 0..1
+    # pulsing scale from 0.9 .. 1.08 (smoother using sine)
+    scale = 0.95 + 0.13 * (0.5 * (1 + math.sin(2 * math.pi * t)))
+    frame = make_frame((w, h), args.bg, args.box, args.text, args.fg, font, scale)
+    frames.append(frame)
+
+# Prepare durations: use a duration list to be explicit
+duration_per_frame_ms = max(1, int((args.duration * 1000) / max(1, args.frames)))
+durations = [duration_per_frame_ms] * len(frames)
+
+# Convert frames to paletted mode with adaptive palette at save time.
+# Converting each frame with Image.convert("P", palette=Image.ADAPTIVE) is fine,
+# but creating a consistent palette may produce smaller files and avoid artifacts.
+paletted = []
+for f in frames:
+    # quantize is usually better for RGBA -> P because it handles dithering/alpha.
+    try:
+        p = f.convert("RGBA").quantize(method=Image.MEDIANCUT)
+    except Exception:
+        p = f.convert("P", palette=Image.ADAPTIVE)
+    paletted.append(p)
+
+# Save animated GIF. loop=0 => infinite loop.
+paletted[0].save(
+    args.out,
+    save_all=True,
+    append_images=paletted[1:],
+    duration=durations,
+    loop=0,
+    disposal=2,
+    optimize=False,
+)
+print(f"Wrote {args.out} ({len(frames)} frames, {args.duration}s)")
+if name == "main": main()
+
+Notes and tips
+
+Keep dimensions and frame count modest for GitHub preview (smaller than ~5MB and reasonably small dimensions — e.g., 400×300 with 20 frames) so GitHub will load and autoplay quickly.
+If you still see only a static frame in GitHub's preview, clear any caching or try opening the raw file URL (raw.githubusercontent.com/...) — GitHub's file viewer will animate GIFs when the file is served as a regular raw GIF.
+If you want the GIF to exactly match a specific palette (to reduce size further), you can generate a single global palette from a merged image of all frames and use that palette for all frames — I can add that if you want even smaller files.
+    pip install Pillow
+
+Usage examples:
+    python generate_placeholder.py --out placeholder.gif  --https://gifphy.com/ninja-scroll-night.gif 
+    python generate_placeholder.py --width 400 --height 300 --text "Loading..." --bg "#eeeeee" --fg "#777777" --frames 20 --duration 2.0
+
+"""
+import argparse
+import math
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Generate an animated GIF placeholder")
+    p.add_argument("--width", type=int, default=300, help="image width in px")
+    p.add_argument("--height", type=int, default=200, help="image height in px")
+    p.add_argument("--bg", default="#DDDDDD", help="background color (hex or name)")
+    p.add_argument("--box", default="#BBBBBB", help="box color")
+    p.add_argument("--fg", default="#333333", help="text color")
+    p.add_argument("--text", default="GIF", help="centered text")
+    p.add_argument("--frames", type=int, default=24, help="number of frames")
+    p.add_argument("--duration", type=float, default=2.0, help="total duration in seconds")
+    p.add_argument("--out", default="placeholder.gif", help="output filename")
+    p.add_argument("--font", default="", help="path to .ttf font (optional)")
+    return p.parse_args()
+
+def centered_text_draw(draw, text, font, img_size, fill):
+    w, h = draw.textsize(text, font=font)
+    x = (img_size[0] - w) / 2
+    y = (img_size[1] - h) / 2
+    draw.text((x, y), text, font=font, fill=fill)
+
+def make_frame(base_size, bg_color, box_color, text, text_color, font, scale):
+    w, h = base_size
+    # Create RGBA so we can anti-alias and produce nicer result
+    img = Image.new("RGBA", (w, h), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    # compute rounded rect size
+    margin = int(min(w, h) * 0.1)
+    box_w = int((w - 2 * margin) * scale)
+    box_h = int((h - 2 * margin) * scale)
+    box_x = (w - box_w) // 2
+    box_y = (h - box_h) // 2
+    radius = max(6, int(min(box_w, box_h) * 0.06))
+
+    # Draw shadow
+    shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    shadow_color = (0, 0, 0, 60)
+    sd.rounded_rectangle((box_x+4, box_y+6, box_x+box_w+4, box_y+box_h+6), radius=radius, fill=shadow_color)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(6))
+    img = Image.alpha_composite(img, shadow)
+    draw = ImageDraw.Draw(img)
+
+    # Draw rounded rect (box)
+    draw.rounded_rectangle((box_x, box_y, box_x + box_w, box_y + box_h), radius=radius, fill=box_color)
+
+    # Draw centered text
+    draw = ImageDraw.Draw(img)
+    # we want the font to scale with box size
+    try:
+        # If font provided, font object already sized; else we supplied default below
+        wtext, htext = draw.textsize(text, font=font)
+        # If text too big, scale font down
+        max_text_w = int(box_w * 0.8)
+        max_text_h = int(box_h * 0.6)
+        if wtext > max_text_w or htext > max_text_h:
+            # compute scale factor
+            scale_factor = min(max_text_w / float(wtext), max_text_h / float(htext))
+            # recalc font size if truetype
+            if hasattr(font, "path") or hasattr(font, "font"):
+                # best-effort: create new truetype with scaled size if attribute exists
+                try:
+                    fontsize = max(10, int(font.size * scale_factor))
+                    font = ImageFont.truetype(font.path, fontsize)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    centered_text_draw(draw, text, font, (w, h), text_color)
+
+    return img.convert("P", palette=Image.ADAPTIVE)
+
+def main():
+    args = parse_args()
+    w, h = args.width, args.height
+
+    # Load font
+    if args.font:
+        try:
+            font = ImageFont.truetype(args.font, size=int(min(w, h) * 0.18))
+            # attach path attribute for resizing in helper (best-effort)
+            font.path = args.font
+            font.size = int(min(w, h) * 0.18)
+        except Exception as e:
+            print("Could not load font, falling back to default:", e)
+            font = ImageFont.load_default()
+    else:
+        # default font; size will be approximate
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", size=int(min(w, h) * 0.18))
+            font.path = "DejaVuSans.ttf"
+            font.size = int(min(w, h) * 0.18)
+        except Exception:
+            font = ImageFont.load_default()
+
+    frames = []
+    for i in range(args.frames):
+        t = i / args.frames  # 0..1
+        # pulsing scale from 0.9 .. 1.08 (smoother using sine)
+        scale = 0.95 + 0.13 * (0.5 * (1 + math.sin(2 * math.pi * t)))
+        frame = make_frame((w, h), args.bg, args.box, args.text, args.fg, font, scale)
+        frames.append(frame)
+
+    # Save animated GIF
+    duration_per_frame_ms = max(1, int((args.duration * 1000) / max(1, args.frames)))
+    frames[0].save(
+        args.out,
