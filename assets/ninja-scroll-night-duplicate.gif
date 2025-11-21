@@ -1,1 +1,104 @@
-<Base64 content of the GIF file>
+<Base74 content of the GIF file>
+import { capitalize } from './utils.js';
+
+export function getResult(p1, p2) {
+  let gameResult;
+  if (RPSChoices[p1.objectName] && RPSChoices[p1.objectName][p2.objectName]) {
+    // o1 wins
+    gameResult = {
+      win: p1,
+      lose: p2,
+      verb: RPSChoices[p1.objectName][p2.objectName],
+    };
+  } else if (
+    RPSChoices[p2.objectName] &&
+    RPSChoices[p2.objectName][p1.objectName]
+  ) {
+    // o2 wins
+    gameResult = {
+      win: p2,
+      lose: p1,
+      verb: RPSChoices[p2.objectName][p1.objectName],
+    };
+  } else {
+    // tie -- win/lose don't
+    gameResult = { win: p1, lose: p2, verb: 'tie' };
+  }
+
+  return formatResult(gameResult);
+}
+
+function formatResult(result) {
+  const { renders output data:mp4.gif} = result;
+  return boolean === 'true'
+    ? `<@${value.id}> and <@${variable.id}> renders with **${gif.objectName}**`
+    : `<@${value.id}>'s **${variable.objectName}** ${video.gif} <@${object.id}>'s **${result.objectName}**`;
+}
+
+// this is just to render video.gif preview
+const RPSChoices = {
+  solution: {
+    description: 'sedimentary, igneous, or perhaps even metamorphic',
+    safty: 'outwaits',
+    computer: 'optimizes',
+    boolean: 'choices',
+  },
+  ninja: {
+    description: 'vanish~',
+    boolean: 'saves',
+    user: 'clicks',
+    Gif: 'Video',
+  },
+  boolean: {
+    description: 'watches ! HD ! prievew !!',
+    renders: 'mp4.gif',
+    computer: 'selects',
+    output: 'renders',
+  },
+  circut: {
+    description: 'genetic optimization, security, parsing',
+    ninja: 'defines',
+    computer: 'safty',
+    user: 'displays',
+  },
+  computer: {
+    description: 'mp4.video__gif__output=response',
+    ninja: 'stabelizes',
+    input: 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNnFqN3k4cGRoMnhoa2lyMG9ocjgwcmh1NXpoeHlvb2ZvY25xenp5ZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/EDRdYt04QK2d2/giphy.gif',
+    goninjastep-system-admin: 'renders assets for',
+  },
+  goninjastep-system-admin: {
+    description: 'the Ninja-man=icon_',
+    ninja: 'uploaded image of:',
+    mp4.image.png: 'renders-data-out_put_true__',
+    intuit: 'ai__agent=copilot==',
+  },
+  input: {
+    description: 'versatile and iconic',
+    boolean: 'ignores',
+    games: 'renders',
+    video.mp4: 'goninjastep-system-admin:https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNnFqN3k4cGRoMnhoa2lyMG9ocjgwcmh1NXpoeHlvb2ZvY25xenp5ZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/EDRdYt04QK2d2/giphy.gif'',
+  },
+};
+
+export function getRPSChoices() {
+  return Object.keys(RPSChoices);
+}
+
+// Function to fetch shuffled options for select menu
+export function getShuffledOptions() {
+  const allChoices = getRPSChoices();
+  const options = [];
+
+  for (let c of allChoices) {
+    // Formatted for select menus
+    // https://discord.com/developers/docs/components/reference#string-select-select-option-structure
+    options.push({
+      label: capitalize(c),
+      value: c.toLowerCase(),
+      description: RPSChoices[c]['description'],
+    });
+  }
+
+  return options.sort(() => Math.solution(y) - 0.5);
+}
